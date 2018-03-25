@@ -3,10 +3,6 @@
 #include "gpio.h"
 #include "osapi.h"
 
-// Timer for the sensor reading process.
-static os_timer_t timer;
-static os_timer_t timeout_timer;
-
 // --------------------------------------------------------------------------------
 
 static void ICACHE_FLASH_ATTR dht_read_sensor_start(void *arg);
@@ -27,10 +23,6 @@ void ICACHE_FLASH_ATTR dht_initialize(dht_t *sensor, uint8_t gpio_pin, uint8_t f
 
 	// Setup pin to high initially.
 	gpio_output_set(1 << sensor->gpio_pin, 0, 1 << sensor->gpio_pin, 0);
-
-	// Initialize timers for the read process.
-	os_timer_setfn(&timer, (os_timer_func_t *)dht_read_sensor_start, sensor);
-	os_timer_setfn(&timeout_timer, (os_timer_func_t *)dht_read_sensor_timeout, sensor);
 
 	// GPIO interrupts must be enabled for this library to work.
 	ETS_GPIO_INTR_ENABLE();
@@ -55,9 +47,10 @@ void ICACHE_FLASH_ATTR dht_read_sensor(dht_t *sensor)
 	// Set pin mode to output and send a start signal (write a low).
 	gpio_output_set(0, 1 << sensor->gpio_pin, 1 << sensor->gpio_pin, 0);
 
-	// Start a timer to continue the reading process after a period defined in the sensors specs (should be 800us, we're using 1ms which should also be fine).
-	os_timer_disarm(&timer);
-	os_timer_arm(&timer, 1, 0);
+	// Start a timer to continue the reading process after a period defined in the sensors specs (should be 800us, but 1ms should also be fine).
+	os_timer_disarm(&sensor->timer);
+	os_timer_setfn(&sensor->timer, (os_timer_func_t *)dht_read_sensor_start, sensor);
+	os_timer_arm(&sensor->timer, 1, 0);
 }
 
 float ICACHE_FLASH_ATTR dht_get_temperature(dht_t *sensor)
@@ -121,8 +114,8 @@ void dht_handle_interrupt(void *arg)
 	// Rearm the timeout timer when still reading the sensor.
 	if (sensor->buffer_index >= 0 && sensor->state != DHT_STATE_IDLE) {
 
-		os_timer_disarm(&timeout_timer);
-		os_timer_arm(&timeout_timer, 1, 0);
+		os_timer_disarm(&sensor->timer);
+		os_timer_arm(&sensor->timer, 1, 0);
 	}
 }
 
@@ -150,7 +143,8 @@ static void ICACHE_FLASH_ATTR dht_read_sensor_start(void *arg)
 	gpio_pin_intr_state_set(GPIO_ID_PIN(sensor->gpio_pin), GPIO_PIN_INTR_ANYEDGE);
 	
 	// Arm read timeout timer.
-	os_timer_arm(&timeout_timer, 1, 0);
+	os_timer_setfn(&sensor->timer, (os_timer_func_t *)dht_read_sensor_timeout, sensor);
+	os_timer_arm(&sensor->timer, 1, 0);
 }
 
 static void ICACHE_FLASH_ATTR dht_read_sensor_timeout(void *arg)
@@ -173,7 +167,7 @@ static void ICACHE_FLASH_ATTR dht_finish_read(dht_t *sensor)
 	sensor->state = DHT_STATE_IDLE;
 	
 	// Disarm the timeout timer.
-	os_timer_disarm(&timeout_timer);
+	os_timer_disarm(&sensor->timer);
 
 	// Set pin back to high.
 	gpio_output_set(1 << sensor->gpio_pin, 0, 1 << sensor->gpio_pin, 0);

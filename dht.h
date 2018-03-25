@@ -3,6 +3,14 @@
 
 #include "os_type.h"
 
+// --------------------------------------------------------------------------------
+
+// Sensor initialization flags
+typedef enum {
+	DHT_FLAG_INTERRUPTS = 0x1,	// Attach interrupts automatically. This is useful if the temp sensor is the only source of interrupts.
+} dht_flags_t;
+
+// Sensor state
 typedef enum {
 	DHT_STATE_IDLE,
 	DHT_STATE_STARTING,
@@ -10,15 +18,12 @@ typedef enum {
 	DHT_STATE_HIGH,
 } dht_state_t;
 
-typedef enum {
-	DHT_FLAG_INTERRUPTS = 0x1,	// Attach interrupts automatically. This is useful if the temp sensor is the only source of interrupts.
-} dht_flags_t;
-
 // --------------------------------------------------------------------------------
 
-typedef struct dht_t {
+typedef struct {
 	uint8_t gpio_pin;			// GPIO pin the sensor is connected to
 	uint8_t	flags;				// Flags this sensor was initialized with
+	os_timer_t timer;			// Timer used for sensor reading and read timeout
 	volatile uint8_t has_value;	// Set to 1 when the device has decoded a verified value from the sensor
 	volatile uint8_t state;		// Current state of the sensor (see dht_state_t)
 	int8_t buffer[5];			// Raw data from the sensor
