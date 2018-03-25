@@ -6,7 +6,7 @@
 // Timer for the sensor reading process.
 static os_timer_t timer;
 static os_timer_t timeout_timer;
-#include "device.h"
+
 // --------------------------------------------------------------------------------
 
 static void ICACHE_FLASH_ATTR dht_read_sensor_start(void *arg);
@@ -74,12 +74,12 @@ void dht_handle_interrupt(void *arg)
 {
 	dht_t *sensor = (dht_t *)arg;
 
+	// Clear the interrupt status.
+	uint32_t gpio_status = GPIO_REG_READ(GPIO_STATUS_ADDRESS);
+	GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, gpio_status);
+
 	// Read the value of the pin.
 	sensor->state = (GPIO_INPUT_GET(sensor->gpio_pin) ? DHT_STATE_HIGH : DHT_STATE_LOW);
-
-	// Clear the interrupt status.
-	uint32_t status = GPIO_REG_READ(GPIO_STATUS_ADDRESS);
-	GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, status);
 
 	// When not reading the sensor, ignore the interrupt (interrupts should be disabled anyway).
 	if (sensor->state == DHT_STATE_IDLE) {
@@ -141,16 +141,13 @@ static void ICACHE_FLASH_ATTR dht_read_sensor_start(void *arg)
 	
 	sensor->buffer_index = -2; // The sensor will send low, high, low when it is ready. We can ignore them.
 
-	ETS_GPIO_INTR_DISABLE();
-
 	// Attach an interrupt handler unless the user handles interrupts manually.
 	if (sensor->flags & DHT_FLAG_INTERRUPTS) {
 		ETS_GPIO_INTR_ATTACH(dht_handle_interrupt, sensor);
 	}
 
-	// Enable interrupts for the sensors pin.
+	// Enable interrupts for the sensor pin.
 	gpio_pin_intr_state_set(GPIO_ID_PIN(sensor->gpio_pin), GPIO_PIN_INTR_ANYEDGE);
-	ETS_GPIO_INTR_ENABLE();
 	
 	// Arm read timeout timer.
 	os_timer_arm(&timeout_timer, 1, 0);
@@ -158,8 +155,13 @@ static void ICACHE_FLASH_ATTR dht_read_sensor_start(void *arg)
 
 static void ICACHE_FLASH_ATTR dht_read_sensor_timeout(void *arg)
 {
+	ETS_GPIO_INTR_DISABLE();
+
+	// Not received a value for a while, reset the sensors state.
 	dht_t *sensor = (dht_t *)arg;
 	dht_finish_read(sensor);
+
+	ETS_GPIO_INTR_ENABLE();
 }
 
 static void ICACHE_FLASH_ATTR dht_finish_read(dht_t *sensor)

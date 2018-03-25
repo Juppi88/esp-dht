@@ -42,8 +42,8 @@ void ICACHE_FLASH_ATTR dht_read_sensor(dht_t *sensor);
 float ICACHE_FLASH_ATTR dht_get_temperature(dht_t *sensor);
 float ICACHE_FLASH_ATTR dht_get_humidity(dht_t *sensor);
 
-// Call the sensors interrupt handler manually when there are multiple separate interrupt handlers.
-// The argument is the sensor_t struct which triggered the interrupt.
+// Call the sensors interrupt handler manually if and only if a global handler is used outside this library.
+// The argument is the dht_t struct which triggered the interrupt.
 void dht_handle_interrupt(void *arg);
 
 #endif
